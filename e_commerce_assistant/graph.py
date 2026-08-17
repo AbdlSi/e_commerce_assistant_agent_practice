@@ -9,10 +9,10 @@ from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_openai import ChatOpenAI
-from langchain.agents import create_agent
 from langchain.messages import AnyMessage, HumanMessage
 
-from e_commerce_assistant.tools.product_search_recommendation import extract_filters, normalize_filters,product_search, ProductFilter
+from e_commerce_assistant.tools.product_search import extract_filters, normalize_filters,product_search, ProductFilter
+from e_commerce_assistant.tools.product_recommendation import product_recommendation, ProductRecommender
 load_dotenv()
 
 Intent = Literal[
@@ -31,6 +31,8 @@ class AgentState(TypedDict, total = False):
     classification_reason:str
     product_filters:ProductFilter
     search_result:dict[str,str|int|float]
+    recommendation_result:list[dict[str,str|int|float]]
+    recommendation_reason: str
     message: Annotated[list[AnyMessage],add_messages]
     response:str
 
@@ -96,9 +98,6 @@ Important rules:
 - Do not invent a new intent.
 - Assign a realistic confidence score.
 """ 
-product_searcher_prompt ="""
-
-"""
 
 
 def classify_intent(state:AgentState)->AgentState:
@@ -141,6 +140,15 @@ def searching_products(state:AgentState)->AgentState:
         "search_result":result,
     }
 
+def recommending_products(state:AgentState)->AgentState:
+    products = state["search_result"]
+    user_message = state["user_message"]
+    result = product_recommendation(products,user_message)
+    return {
+        "recommendation_result":result.recom_response,
+        "recommendation_reason":result.recom_reason,
+    }
+
 def generate_search_response(state:AgentState)->AgentState:
     human_message= HumanMessage(
         content=state["user_message"]
@@ -150,9 +158,41 @@ def generate_search_response(state:AgentState)->AgentState:
             {
                 "role":"system",
                 "content":"""
-                You are an e-commerce assistant.
-                Answer using only the provided search results.
-                Do not invent product information.
+                You are the final response generator for an e-commerce product search system.
+
+                Your task is to present the provided product search results in a clear, useful, and natural way that directly answers the user's request.
+
+                ## Instructions
+
+                1. Use only the provided product search results.
+                2. Do not invent, modify, or assume any product information.
+                3. Do not introduce products that are not present in the search results.
+                4. Present the products that are most relevant to the user's request.
+                5. Preserve important product details such as:
+
+                * product name
+                * brand
+                * price
+                * category
+                * color
+                * size
+                * rating
+                * relevant features
+                6. Prioritize details that are relevant to the user's request rather than listing every available database field.
+                7. If multiple products are returned, present them in a way that makes them easy to compare.
+                8. Do not choose a single "best" product unless the user explicitly asks for a recommendation.
+                9. Do not perform new filtering or change the search criteria. Treat the provided search results as the authoritative results of the search operation.
+                10. If the results only partially satisfy the user's request, clearly mention the limitation.
+                11. If no products are returned, tell the user that no matching products were found.
+                12. Do not expose internal database fields or implementation details unless they are useful to the user.
+                13. Do not mention internal concepts such as database queries, search nodes, state, filters, SQL, or tool execution.
+                14. Keep the answer concise, conversational, and easy to scan.
+                15. Do not claim that a product has a feature unless that feature is explicitly present in the provided data.
+
+                Your purpose is to **present search results**, not to make a product recommendation.
+
+                Use the user's original request to determine which details are most useful to mention.
+
                 """
             },
             {
@@ -175,17 +215,88 @@ def generate_search_response(state:AgentState)->AgentState:
         "response":response.content
     }
 
+def generate_recommendation_response(state:AgentState)->AgentState:
+    human_message = HumanMessage(
+        content=state["user_message"]
+    )
+    response = model.invoke(
+        [
+            {   
+                "role":"system",
+                "content":"""
+                You are the final response generator for an e-commerce product recommendation system.
+
+                Your task is to generate a clear, helpful, and concise response to the user based only on the recommendation data provided to you.
+
+                ## Instructions
+
+                1. Use only the provided recommendation data and product information.
+                2. Do not invent, assume, or modify any product details.
+                3. Do not recommend a different product.
+                4. Clearly state which product is recommended.
+                5. Briefly explain why the product matches the user's request.
+                6. Mention the strongest relevant factors, such as:
+                * price
+                * brand
+                * category
+                * rating
+                * features
+                * size
+                * color
+                * intended use
+                7. If there are unmet user preferences, mention them clearly and naturally.
+                8. Do not claim that the product perfectly matches the user if the recommendation data says otherwise.
+                9. Keep the response conversational and easy to understand.
+                10. Avoid unnecessary technical details, database terminology, internal reasoning, confidence calculations, or references to the recommendation system.
+                11. Do not mention that the product came from a database or search result unless that is useful to the user.
+                12. Do not expose internal fields such as `product_id`, `matched_preferences`, `unmet_preferences`, or `confidence` directly. Use them only to construct the answer.
+                13. If no valid product was selected, explain that there is not enough suitable product information to make a recommendation rather than inventing one.
+                14. Use the provided recommendation reason to generate a better response for the user.
+                The final answer should directly answer the user's product request and explain the recommendation using only the supplied information.
+    
+                """
+            },
+            {
+                "role":"user",
+                "content":f"""
+                User request:
+                {state["user_message"]}
+
+                Product recommendation results:
+                {state["recommendation_result"]}
+
+                Product recommendation reason:
+                {state['classification_reason']}
+                
+                """
+            },
+        ]
+    )
+    return {
+        "message":[
+            human_message,
+            response,
+        ],
+        "response":response.content
+    }
+
 def decide_next_node(state:AgentState)->str:
-    if state["intent"] == "product_search":
+    if state["intent"] == "product_search" or state["intent"] == "product_recommendation":
         return "extract_product_filters"
-    # elif state["intent"] == "product_recommendation":
-    #     return "product_recommendation"
+
     # elif state["intent"] == "order_status":
     #     return "order_status"
     # elif state["intent"] == "faq":
     #     return "faq"
     # elif state["intent"] == "greeting":
     #     return "greeting"
+
+def decide_search_recommend_node(state:AgentState)->str:
+    if state["intent"] == "product_search":
+        return "generate_search_response"
+    
+    elif state["intent"] == "product_recommendation":
+        return "product_recommendation"  
     
 graph.add_node("intent_classification",classify_intent)
 
@@ -194,7 +305,8 @@ graph.add_node("normalize_product_filters",normalize_product_filters)
 graph.add_node("product_search",searching_products)
 graph.add_node("generate_search_response",generate_search_response)
 
-# graph.add_node("product_recommendation",product_recommendation)
+graph.add_node("product_recommendation",recommending_products)
+graph.add_node("generate_recommendation_response", generate_recommendation_response)
 # graph.add_node("order_status",order_status)
 # graph.add_node("faq",faq)
 # graph.add_node("greeting",greeting)
@@ -207,7 +319,6 @@ graph.add_conditional_edges(
     decide_next_node,
     {
         "extract_product_filters":"extract_product_filters",
-        # "product_recommendation":"product_recommendation",
         # "order_status":"order_status",
         # "faq":"faq",
         # "greeting":"greeting",
@@ -216,10 +327,21 @@ graph.add_conditional_edges(
 
 graph.add_edge("extract_product_filters","normalize_product_filters")
 graph.add_edge("normalize_product_filters","product_search")
-graph.add_edge("product_search","generate_search_response")
-graph.add_edge("generate_search_response",END)
+graph.add_conditional_edges(
+    "product_search",
+    decide_search_recommend_node,
+    {
+        "generate_search_response":"generate_search_response",
+        "product_recommendation":"product_recommendation",
+    }
+)
+graph.add_edge("product_recommendation","generate_recommendation_response")
 
-# graph.add_edge("product_recommendation",END)
+graph.add_edge("generate_search_response",END)
+graph.add_edge("generate_recommendation_response",END)
+
+
+
 
 # graph.add_edge("order_status",END)
 

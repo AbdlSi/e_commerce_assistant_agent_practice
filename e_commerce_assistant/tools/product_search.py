@@ -197,7 +197,6 @@ def product_search(
     min_price:float|None=None,
     max_price:float|None=None,
     limit:int|None= None,
-    features:str|None= None
 ):
     """
     Search products in the database using optional filters such as
@@ -236,11 +235,6 @@ def product_search(
         query += " AND products_variants.price <= :max_price"
         params["max_price"] = max_price
 
-    if features is not None:
-        for feature in features:            
-            query += " AND products.name LIKE :feature "
-            params["feature"] = f"%{feature}%"
-
     if limit is not None:
         query += " LIMIT :limit"
         params["limit"] = limit
@@ -254,24 +248,31 @@ def product_search(
         products_list = result.mappings().all()
     return [dict(product) for  product in products_list]
 
+user_input = "I need a waterproof shoes with robber grip "
+search_filters = extract_filters(
+    user_input,
+)
+filters = normalize_filters(search_filters)
 
-# search_filters = extract_filters(
-#     "I need a waterproof shoes with robber grip "
-#     # "my size is small and i want the price to be above 100 dollars."
-#     # "I want at least 7 products"
-# )
-# filters = normalize_filters(search_filters)
+products_list = product_search(    
+    category=filters.category, 
+    color =filters.color, 
+    size = filters.size, 
+    brand = filters.brand,
+    min_price= filters.min_price,
+    max_price= filters.max_price,
+    limit = filters.limit,
+ )
 
-# products_list = product_search(    
-#     category=filters.category, 
-#     color =filters.color, 
-#     size = filters.size, 
-#     brand = filters.brand,
-#     min_price= filters.min_price,
-#     max_price= filters.max_price,
-#     limit = filters.limit,
-#     features= filters.features
-#  )
-
-def product_recommendation(filters):
-    
+counter = 0
+print("--SEARCH FILTERS--")
+print(f"{filters}")
+print("------------------")
+print("--PRODUCTS LIST--")
+counter = 0 
+for p in filters:
+    counter += 1
+    print(p)
+print( )
+print(f"ITEMS COUNTER:{counter}")
+print("------------------")

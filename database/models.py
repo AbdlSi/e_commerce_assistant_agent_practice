@@ -12,7 +12,7 @@ db_url =URL.create(
     password=os.getenv("DB_PASSWORD"),  
     database=os.getenv("DB_NAME"), 
     host="localhost",
-    port = 3307
+    port = 3306
 )
 engine = create_engine(db_url)
 base = declarative_base()
