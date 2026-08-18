@@ -160,8 +160,8 @@ Rules:
   is an integer otherwise it is not.
 
 """
-def extract_filters(user_message:str)-> ProductFilter:
-    result = filter_extractor.invoke(
+def extract_filters(user_message:str):
+    result = model.with_structured_output(ProductFilter,).invoke(
         [
             {
                 "role":"system",
@@ -189,6 +189,8 @@ def normalize_filters(filters):
             features_list.append(feature)
         filters.features = features_list
 
+    return filters
+
 def product_search(
     category:str|None=None,
     color:str|None=None,
@@ -197,6 +199,10 @@ def product_search(
     min_price:float|None=None,
     max_price:float|None=None,
     limit:int|None= None,
+<<<<<<< HEAD
+=======
+    rating:float|None = None,
+>>>>>>> f8db6a8 (new changes)
 ):
     """
     Search products in the database using optional filters such as
@@ -252,6 +258,7 @@ user_input = "I need a waterproof shoes with robber grip "
 search_filters = extract_filters(
     user_input,
 )
+<<<<<<< HEAD
 filters = normalize_filters(search_filters)
 
 products_list = product_search(    
@@ -271,6 +278,28 @@ print("------------------")
 print("--PRODUCTS LIST--")
 counter = 0 
 for p in filters:
+=======
+filters_list = normalize_filters(search_filters)
+
+products_list = product_search(    
+
+    category=filters_list.category, 
+    color =filters_list.color, 
+    size = filters_list.size, 
+    brand = filters_list.brand,
+    min_price= filters_list.min_price,
+    max_price= filters_list.max_price,
+    limit = filters_list.limit,
+    rating= filters_list.rating,
+ )
+
+counter = 0
+print("--SEARCH FILTERS--")
+print(f"{filters_list}")
+print("------------------")
+print("--PRODUCTS LIST--")
+for p in products_list:
+>>>>>>> f8db6a8 (new changes)
     counter += 1
     print(p)
 print( )

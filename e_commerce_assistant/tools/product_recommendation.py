@@ -3,7 +3,11 @@ from typing import Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
 
+<<<<<<< HEAD
 from langchain_openai import ChatOpenAI
+=======
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+>>>>>>> f8db6a8 (new changes)
 from langchain.tools import tool
 
 from dotenv import load_dotenv
@@ -12,8 +16,11 @@ from database.models import engine
 from sqlalchemy import text
 import json
 
+<<<<<<< HEAD
 from product_search import ProductFilter ,extract_filters , normalize_filters,product_search
 
+=======
+>>>>>>> f8db6a8 (new changes)
 load_dotenv()
 
 model = ChatOpenAI(
@@ -21,6 +28,13 @@ model = ChatOpenAI(
     temperature=0,
 )
 
+<<<<<<< HEAD
+=======
+embedding_model = OpenAIEmbeddings(
+    model="text-embedding-3-small",
+)
+
+>>>>>>> f8db6a8 (new changes)
 recommendation_model_prompt = """
 Rules:
 
@@ -47,6 +61,7 @@ Rules:
 
 """
 
+<<<<<<< HEAD
 user_input = "Winter is coming, and I am looking for clothes that keep warm during the cold days"
 
 search_filters = extract_filters(
@@ -68,6 +83,8 @@ products_list = product_search(
 
 
 
+=======
+>>>>>>> f8db6a8 (new changes)
 class ProductRecommender(BaseModel):
     recom_response: list[dict[str,str|int|float]|None]|None = Field(
         default_factory = list,
@@ -102,8 +119,85 @@ class ProductRecommender(BaseModel):
         )
     )
 
+<<<<<<< HEAD
 def product_recommendation(products,user_message:str):
     
+=======
+
+def _product_search_text(product) -> str:
+    """Convert a product row to stable, descriptive text for embedding."""
+    if isinstance(product, BaseModel):
+        product = product.model_dump()
+    elif hasattr(product, "_mapping"):
+        product = dict(product._mapping)
+
+    if isinstance(product, dict):
+        searchable_product = {
+            str(key): value
+            for key, value in product.items()
+            if value is not None and value != "" and value != []
+        }
+        return json.dumps(searchable_product, default=str, ensure_ascii=False, sort_keys=True)
+
+    return str(product)
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    """Calculate cosine similarity without requiring an additional dependency."""
+    if len(left) != len(right):
+        raise ValueError("Embedding vectors must have the same dimensions")
+
+    dot_product = sum(a * b for a, b in zip(left, right))
+    left_norm = sum(value * value for value in left) ** 0.5
+    right_norm = sum(value * value for value in right) ** 0.5
+
+    if left_norm == 0 or right_norm == 0:
+        return 0.0
+
+    return dot_product / (left_norm * right_norm)
+
+
+def semantic_search(products, user_message: str, limit: int | None = None):
+    """
+    Rank product rows by their semantic similarity to a user's request.
+
+    The original product objects are returned unchanged, so the result remains
+    compatible with ``product_recommendation`` and existing database rows.
+    ``limit=None`` returns every product in relevance order.
+    """
+    if products is None:
+        return []
+
+    product_rows = list(products)
+    if not product_rows:
+        return []
+
+    if not isinstance(user_message, str):
+        raise TypeError("user_message must be a string")
+    if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 0):
+        raise ValueError("limit must be a non-negative integer or None")
+    if limit == 0:
+        return []
+    if not user_message.strip():
+        return product_rows[:limit]
+
+    product_texts = [_product_search_text(product) for product in product_rows]
+    product_embeddings = embedding_model.embed_documents(product_texts)
+    query_embedding = embedding_model.embed_query(user_message.strip())
+
+    ranked_products = sorted(
+        zip(product_rows, product_embeddings),
+        key=lambda item: _cosine_similarity(query_embedding, item[1]),
+        reverse=True,
+    )
+    ranked_rows = [product for product, _ in ranked_products]
+    return ranked_rows[:limit]
+
+
+def product_recommendation(products,user_message:str):
+    products = semantic_search(products, user_message)
+
+>>>>>>> f8db6a8 (new changes)
     results = model.with_structured_output(ProductRecommender).invoke(
         [
             {
@@ -125,6 +219,7 @@ def product_recommendation(products,user_message:str):
     return results
 
 
+<<<<<<< HEAD
 recommendation = product_recommendation(products_list,user_input)
 
 print("--SEARCH FILTERS--")
@@ -144,3 +239,44 @@ for r in recommendation.recom_response:
 print( )
 print(f"REASON: {recommendation.recom_reason}")
 print("------------------")
+=======
+if __name__ == "__main__":
+    from product_search import extract_filters, normalize_filters, product_search
+
+    user_input = "Winter is coming, and I am looking for clothes that keep warm during the cold days"
+
+    search_filters = extract_filters(
+        user_input,
+    )
+    filters_list = normalize_filters(search_filters)
+
+    products_list = product_search(
+        category=filters_list.category,
+        color=filters_list.color,
+        size=filters_list.size,
+        brand=filters_list.brand,
+        min_price=filters_list.min_price,
+        max_price=filters_list.max_price,
+        limit=filters_list.limit,
+    )
+
+    recommendation = product_recommendation(products_list,user_input)
+
+    print("--SEARCH FILTERS--")
+    print(f"{filters_list}")
+    print("------------------")
+    print("--PRODUCTS LIST--")
+    counter = 0
+    for p in products_list:
+        counter += 1
+        print(p)
+    print()
+    print(f"ITEMS COUNTER:{counter}")
+    print("------------------")
+    print("--RECOMMENDATIONS LIST--")
+    for r in recommendation.recom_response:
+        print(r)
+    print()
+    print(f"REASON: {recommendation.recom_reason}")
+    print("------------------")
+>>>>>>> f8db6a8 (new changes)

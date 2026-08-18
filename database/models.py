@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, String, Integer, URL, ForeignKey, Numeric
+from sqlalchemy import create_engine, String, Integer, URL, ForeignKey, Numeric , engine, text
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column, Session
 from decimal import Decimal
 import os 
