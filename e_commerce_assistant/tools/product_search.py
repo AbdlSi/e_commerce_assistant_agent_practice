@@ -3,13 +3,15 @@ from typing import Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
 
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.tools import tool
-
-from dotenv import load_dotenv
 
 from database.models import engine
 from sqlalchemy import text
+
+from uuid import uuid4
+
+import json
 
 
 load_dotenv()
@@ -96,10 +98,9 @@ class ProductFilter(BaseModel):
         )
     )
 
-    limit:int = Field(
-        default=5,
+    limit:int|None = Field(
+        default=None,
         ge=1,
-        le=20,
     )
 
     description:str|None = Field(
@@ -199,22 +200,18 @@ def product_search(
     min_price:float|None=None,
     max_price:float|None=None,
     limit:int|None= None,
-<<<<<<< HEAD
-=======
-    rating:float|None = None,
->>>>>>> f8db6a8 (new changes)
 ):
     """
     Search products in the database using optional filters such as
     category, color, size, brand, minimum price, and maximum price.
     """
     query = """
-        SELECT products.category , products.brand , products_variants.color , products_variants.size , products_variants.price
+        SELECT products.product_id, products_variants.product_id, products.name,products.description, products_variants.color, products_variants.size, products_variants.price
         FROM products
         JOIN products_variants
         ON products.product_id = products_variants.product_id
         WHERE 1=1
-    """
+        """
 
     params = {}
     if category is not None:
@@ -254,54 +251,33 @@ def product_search(
         products_list = result.mappings().all()
     return [dict(product) for  product in products_list]
 
-user_input = "I need a waterproof shoes with robber grip "
-search_filters = extract_filters(
-    user_input,
-)
-<<<<<<< HEAD
-filters = normalize_filters(search_filters)
 
-products_list = product_search(    
-    category=filters.category, 
-    color =filters.color, 
-    size = filters.size, 
-    brand = filters.brand,
-    min_price= filters.min_price,
-    max_price= filters.max_price,
-    limit = filters.limit,
- )
 
-counter = 0
-print("--SEARCH FILTERS--")
-print(f"{filters}")
-print("------------------")
-print("--PRODUCTS LIST--")
-counter = 0 
-for p in filters:
-=======
-filters_list = normalize_filters(search_filters)
+# search_filters = extract_filters(
+#     user_input,
+# )
+# print(search_filters)
+# filters_list = normalize_filters(search_filters)
 
-products_list = product_search(    
+# products_list = product_search(    
 
-    category=filters_list.category, 
-    color =filters_list.color, 
-    size = filters_list.size, 
-    brand = filters_list.brand,
-    min_price= filters_list.min_price,
-    max_price= filters_list.max_price,
-    limit = filters_list.limit,
-    rating= filters_list.rating,
- )
+#     category=filters_list.category, 
+#     color =filters_list.color, 
+#     size = filters_list.size, 
+#     brand = filters_list.brand,
+#     min_price= filters_list.min_price,
+#     max_price= filters_list.max_price,
+#     limit = filters_list.limit,
+#  )
 
-counter = 0
-print("--SEARCH FILTERS--")
-print(f"{filters_list}")
-print("------------------")
-print("--PRODUCTS LIST--")
-for p in products_list:
->>>>>>> f8db6a8 (new changes)
-    counter += 1
-    print(p)
-print( )
-print(f"ITEMS COUNTER:{counter}")
-print("------------------")
+# counter = 0
+# print("--SEARCH FILTERS--")
+# print(f"{filters_list}")
+# print("------------------")
+# print("--PRODUCTS LIST--")
+# for p in products_list:
+#     counter += 1
+#     print(p)
+# print( )
+# print(f"ITEMS COUNTER:{counter}")
+# print("------------------")

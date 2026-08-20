@@ -1,8 +1,9 @@
-from sqlalchemy import create_engine, String, Integer, URL, ForeignKey, Numeric , engine, text
+from sqlalchemy import create_engine, String, Integer, URL, ForeignKey, Numeric , engine, text, DateTime
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column, Session
 from decimal import Decimal
 import os 
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -41,4 +42,22 @@ class products_variants(base):
     price: Mapped[Decimal|None] = mapped_column(Numeric(5,2))
     stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     active: Mapped[str] = mapped_column(String(7), nullable= False)
+
+class orders(base):
+    __tablename__ = "orders"
+    order_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    total_price: Mapped[Decimal] = mapped_column(Numeric(10,2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    shipped_at: Mapped[datetime|None] = mapped_column(DateTime)
+    delivered_at: Mapped[datetime|None] = mapped_column(DateTime)
+    tracking_number: Mapped[str] = mapped_column(String(100))
+    carrier: Mapped[str] = mapped_column(String(100))
+
+class faq(base):
+    __tablename__ = "faq"
+    question_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    question: Mapped[str] = mapped_column(String[500])
+    answer: Mapped[str] = mapped_column(String[500])
 

@@ -12,7 +12,10 @@ from langchain_openai import ChatOpenAI
 from langchain.messages import AnyMessage, HumanMessage
 
 from e_commerce_assistant.tools.product_search import extract_filters, normalize_filters,product_search, ProductFilter
-from e_commerce_assistant.tools.product_recommendation import product_recommendation, ProductRecommender
+from e_commerce_assistant.tools.product_recommendation import product_recommendation, ProductRecommender,semantic_search
+from e_commerce_assistant.tools.order_status import extract_order_id, order_search, order_search_response_prompt
+from e_commerce_assistant.tools.faq import faqs_db, faq_response_prompt
+
 load_dotenv()
 
 Intent = Literal[
@@ -30,9 +33,12 @@ class AgentState(TypedDict, total = False):
     confidence:float
     classification_reason:str
     product_filters:ProductFilter
-    search_result:dict[str,str|int|float]
+    search_result:list[dict[str,str|int|float]]
     recommendation_result:list[dict[str,str|int|float]]
     recommendation_reason: str
+    orders_id: int
+    order_search_result:list[dict[str,str|int|float]]
+    faq_result:dict[str,str|int|float]
     message: Annotated[list[AnyMessage],add_messages]
     response:str
 
@@ -135,7 +141,15 @@ def normalize_product_filters(state:AgentState)->AgentState:
 
 def searching_products(state:AgentState)->AgentState:
     filters = state["product_filters"]
-    result = product_search(filters)
+    result = product_search(
+        category=filters.category, 
+        color =filters.color, 
+        size = filters.size, 
+        brand = filters.brand,
+        min_price= filters.min_price,
+        max_price= filters.max_price,
+        limit = filters.limit,
+    )
     return {
         "search_result":result,
     }
@@ -149,6 +163,20 @@ def recommending_products(state:AgentState)->AgentState:
         "recommendation_reason":result.recom_reason,
     }
 
+def extracting_order_id(state:AgentState)->AgentState:
+    user_message = state["user_message"]
+    result = extract_order_id(user_message)
+    return {
+        "orders_id":result
+    }
+
+def searching_order(state:AgentState)->AgentState:
+    order_id = state["orders_id"]
+    result = order_search(order_id)
+    return {
+        "order_search_result":result
+    }
+    
 def generate_search_response(state:AgentState)->AgentState:
     human_message= HumanMessage(
         content=state["user_message"]
@@ -280,14 +308,87 @@ def generate_recommendation_response(state:AgentState)->AgentState:
         "response":response.content
     }
 
+def generate_order_search_response(state:AgentState)->AgentState:
+    human_message = HumanMessage(
+        content=state["user_message"]
+    )
+    response = model.invoke(
+        [
+            {
+                "role":"system",
+                "content":order_search_response_prompt
+
+            },
+            {
+                "role":"user",
+                "content":f"""
+                User request:
+                {state["user_message"]}
+
+                orders search results:
+                {state['order_search_result']}
+                """
+            }
+        ]
+    )   
+    return {
+        "message":[
+            human_message,
+            response
+        ],
+        "response":response.content
+    }
+
+def extract_faq(state:AgentState)->AgentState:
+    user_message = state["user_message"]
+    result = semantic_search(faqs_db,user_message,limit=1)
+    return {
+        "faq_result":result[0]
+    }
+
+def generate_faq_response(state:AgentState)->AgentState:
+    human_message = HumanMessage(
+        content=state["user_message"]
+    )
+    response = model.invoke(
+        [
+            {
+                "role":"system",
+                "content":faq_response_prompt
+            },
+            {
+                "role":"user",
+                "content":f"""
+                User request:
+                {state["user_message"]}
+
+                Retrieved FAQ question:
+                {state['faq_result']['question']}
+
+                Retrieved FAQ answer:
+                {state['faq_result']["answer"]}
+                """
+            }
+        ]
+    )
+    return {
+        "message":[
+            human_message,
+            response
+        ],
+        "response":response.content
+    }
+
 def decide_next_node(state:AgentState)->str:
     if state["intent"] == "product_search" or state["intent"] == "product_recommendation":
         return "extract_product_filters"
 
-    # elif state["intent"] == "order_status":
-    #     return "order_status"
-    # elif state["intent"] == "faq":
-    #     return "faq"
+    elif state["intent"] == "order_status":
+        return "extracting_order_id"
+    
+    elif state["intent"] == "faq":
+        return "extract_faq"
+    
     # elif state["intent"] == "greeting":
     #     return "greeting"
 
@@ -307,8 +408,14 @@ graph.add_node("generate_search_response",generate_search_response)
 
 graph.add_node("product_recommendation",recommending_products)
 graph.add_node("generate_recommendation_response", generate_recommendation_response)
-# graph.add_node("order_status",order_status)
-# graph.add_node("faq",faq)
+
+graph.add_node("extracting_order_id",extracting_order_id)
+graph.add_node("searching_order",searching_order)
+graph.add_node("generate_order_search_response",generate_order_search_response)
+
+graph.add_node("extract_faq",extract_faq)
+graph.add_node("generate_faq_response",generate_faq_response)
+
 # graph.add_node("greeting",greeting)
 graph.add_node("router",lambda state:state)
 
@@ -319,8 +426,8 @@ graph.add_conditional_edges(
     decide_next_node,
     {
         "extract_product_filters":"extract_product_filters",
-        # "order_status":"order_status",
-        # "faq":"faq",
+        "extracting_order_id":"extracting_order_id",
+        "extract_faq":"extract_faq",
         # "greeting":"greeting",
     }
     )
@@ -336,16 +443,16 @@ graph.add_conditional_edges(
     }
 )
 graph.add_edge("product_recommendation","generate_recommendation_response")
-
 graph.add_edge("generate_search_response",END)
 graph.add_edge("generate_recommendation_response",END)
 
 
+graph.add_edge("extracting_order_id","searching_order")
+graph.add_edge("searching_order","generate_order_search_response")
+graph.add_edge("generate_order_search_response",END)
 
-
-# graph.add_edge("order_status",END)
-
-# graph.add_edge("faq",END)
+graph.add_edge("extract_faq","generate_faq_response")
+graph.add_edge("generate_faq_response",END)
 
 # graph.add_edge("greeting",END)
 
@@ -356,4 +463,13 @@ final_input = {
 }
 result = app.invoke(final_input)
 
+
+print('SEARCH RESULTS:')
 print(result["response"])
+print(" ")
+print("INTENT:")
+print(result['intent'])
+print(" ")
+print('CONFIDENCE:')
+print(result['confidence'])
+
